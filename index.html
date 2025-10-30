@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Salesforce Metadata to Excel Data Dictionary</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background-color: white;
+            margin-bottom: 20px;
+        }
+        .upload-area:hover {
+            border-color: #007bff;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        #progress {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        .instructions {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Salesforce Metadata to Excel Data Dictionary</h1>
+    
+    <div class="instructions">
+        <h3>Instructions:</h3>
+        <p>1. Retrieve your Salesforce metadata using VSCode Salesforce extension (e.g., select "Standard" to generate package.xml and retrieve objects).</p>
+        <p>2. Zip the retrieved metadata folder (e.g., force-app/main/default/objects/) or select individual .object-meta.xml files.</p>
+        <p>3. Upload the ZIP file or multiple XML files below.</p>
+        <p>4. Click "Generate Excel" to create a data dictionary with one sheet per object, listing fields and metadata (e.g., name, type, label, description).</p>
+    </div>
+
+    <div class="upload-area">
+        <p>Drag & drop ZIP/XML files here or click to browse.</p>
+        <input type="file" id="fileInput" accept=".zip,.xml" multiple onchange="handleFiles(event)" />
+        <div id="progress"></div>
+    </div>
+
+    <button id="generateBtn" onclick="generateExcel()" disabled>Generate Excel</button>
+
+    <script>
+        let filesContent = {}; // Store parsed content: {objectName: parsedXml}
+
+        // Handle file input (supports multiple files or single zip)
+        function handleFiles(event) {
+            const files = event.target.files;
+            const progress = document.getElementById('progress');
+            progress.textContent = 'Processing files...';
+            document.getElementById('generateBtn').disabled = true;
+
+            if (files.length === 0) return;
+
+            // Check if first file is ZIP
+            if (files[0].name.endsWith('.zip')) {
+                processZip(files[0]);
+            } else {
+                // Process multiple XML files
+                processXmlFiles(Array.from(files));
+            }
+        }
+
+        // Drag & drop support
+        const uploadArea = document.querySelector('.upload-area');
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#007bff';
+        });
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.style.borderColor = '#ccc';
+        });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#ccc';
+            document.getElementById('fileInput').files = e.dataTransfer.files;
+            handleFiles({ target: { files: e.dataTransfer.files } });
+        });
+
+        async function processZip(zipFile) {
+            try {
+                const zip = await JSZip.loadAsync(zipFile);
+                const objectFiles = [];
+                zip.forEach((path, file) => {
+                    if (path.endsWith('.object-meta.xml')) {
+                        objectFiles.push({ path, file });
+                    }
+                });
+
+                for (const { path, file } of objectFiles) {
+                    const xmlText = await file.async('text');
+                    const objectName = path.split('/').slice(-2, -1)[0]; // Extract object name from path like objects/MyObject/MyObject.object-meta.xml
+                    filesContent[objectName] = parseObjectXml(xmlText);
+                }
+
+                document.getElementById('progress').textContent = `Loaded ${Object.keys(filesContent).length} objects.`;
+                document.getElementById('generateBtn').disabled = Object.keys(filesContent).length === 0;
+            } catch (error) {
+                document.getElementById('progress').textContent = 'Error processing ZIP: ' + error.message;
+            }
+        }
+
+        function processXmlFiles(xmlFiles) {
+            xmlFiles.forEach(file => {
+                if (file.name.endsWith('.object-meta.xml')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const objectName = file.name.replace('.object-meta.xml', '');
+                        filesContent[objectName] = parseObjectXml(e.target.result);
+                        updateProgress();
+                    };
+                    reader.readAsText(file);
+                }
+            });
+        }
+
+        function updateProgress() {
+            const count = Object.keys(filesContent).length;
+            const progress = document.getElementById('progress');
+            progress.textContent = `Loaded ${count} objects.`;
+            document.getElementById('generateBtn').disabled = count === 0;
+        }
+
+        function parseObjectXml(xmlText) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+            const fields = xmlDoc.querySelectorAll('fields > field');
+            const fieldData = Array.from(fields).map(field => {
+                const name = field.querySelector('fullName')?.textContent || '';
+                const type = field.querySelector('type')?.textContent || '';
+                const label = field.querySelector('label')?.textContent || '';
+                const description = field.querySelector('description')?.textContent || '';
+                const length = field.querySelector('length')?.textContent || '';
+                const precision = field.querySelector('precision')?.textContent || '';
+                const scale = field.querySelector('scale')?.textContent || '';
+                const required = field.querySelector('required')?.textContent === 'true' ? 'Yes' : 'No';
+                const unique = field.querySelector('unique')?.textContent === 'true' ? 'Yes' : 'No';
+                const defaultValue = field.querySelector('defaultValue')?.textContent || '';
+                return {
+                    'Field Name': name,
+                    'Type': type,
+                    'Label': label,
+                    'Description': description,
+                    'Length': length,
+                    'Precision': precision,
+                    'Scale': scale,
+                    'Required': required,
+                    'Unique': unique,
+                    'Default Value': defaultValue
+                };
+            });
+            // Add object name as first row or header if needed, but since sheet name is object, just fields
+            return fieldData;
+        }
+
+        function generateExcel() {
+            if (Object.keys(filesContent).length === 0) return;
+
+            const wb = XLSX.utils.book_new();
+
+            Object.entries(filesContent).forEach(([objectName, fieldData]) => {
+                if (fieldData.length > 0) {
+                    const ws = XLSX.utils.json_to_sheet(fieldData);
+                    XLSX.utils.book_append_sheet(wb, ws, objectName);
+                }
+            });
+
+            const fileName = 'Salesforce_Data_Dictionary.xlsx';
+            XLSX.writeFile(wb, fileName);
+            document.getElementById('progress').textContent = `Downloaded ${fileName} with ${Object.keys(filesContent).length} sheets.`;
+        }
+    </script>
+</body>
+</html>
