@@ -1,212 +1,506 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Salesforce Metadata to Excel Data Dictionary</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Salesforce Data Dictionary Generator</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --primary: #007bff;
+            --success: #28a745;
+            --danger: #dc3545;
+            --gray: #6c757d;
+            --light: #f8f9fa;
+            --dark: #343a40;
+            --border: #dee2e6;
+        }
+        * { box-sizing: border-box; }
         body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            margin: 0;
             padding: 20px;
-            background-color: #f4f4f4;
+            color: var(--dark);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        header {
+            background: var(--primary);
+            color: white;
+            padding: 24px;
+            text-align: center;
         }
         h1 {
-            text-align: center;
-            color: #333;
+            margin: 0;
+            font-size: 1.8rem;
+            font-weight: 700;
         }
-        .upload-area {
-            border: 2px dashed #ccc;
-            border-radius: 8px;
-            padding: 40px;
-            text-align: center;
-            background-color: white;
-            margin-bottom: 20px;
+        .subtitle {
+            font-size: 1rem;
+            opacity: 0.9;
+            margin-top: 8px;
         }
-        .upload-area:hover {
-            border-color: #007bff;
-        }
-        input[type="file"] {
-            margin: 10px 0;
-        }
-        button {
-            background-color: #007bff;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        button:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-        }
-        #progress {
-            margin-top: 10px;
-            font-weight: bold;
+        .content {
+            padding: 32px;
         }
         .instructions {
-            background-color: #e9ecef;
-            padding: 15px;
-            border-radius: 4px;
-            margin-bottom: 20px;
+            background: #e3f2fd;
+            border-left: 4px solid var(--primary);
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            font-size: 0.95rem;
+        }
+        .instructions h3 { margin: 0 0 12px; color: var(--primary); }
+        .instructions ol { margin: 0; padding-left: 20px; }
+        .instructions li { margin: 8px 0; }
+
+        .upload-box {
+            border: 3px dashed #ccc;
+            border-radius: 12px;
+            padding: 48px 24px;
+            text-align: center;
+            transition: all 0.3s ease;
+            background: #fafafa;
+            cursor: pointer;
+            position: relative;
+        }
+        .upload-box:hover, .upload-box.dragover {
+            border-color: var(--primary);
+            background: #f0f8ff;
+        }
+        .upload-box.dragover {
+            transform: scale(1.02);
+        }
+        .upload-icon {
+            font-size: 48px;
+            color: var(--primary);
+            margin-bottom: 16px;
+        }
+        .file-input { display: none; }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            margin-top: 16px;
+            display: inline-block;
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: #0056b3;
+            transform: translateY(-1px);
+        }
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+        .progress-container {
+            margin-top: 20px;
+            padding: 16px;
+            background: var(--light);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            min-height: 60px;
+        }
+        .progress-text {
+            font-weight: 500;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .error-list {
+            margin-top: 12px;
+            font-size: 0.875rem;
+            color: var(--danger);
+        }
+        .error-item {
+            display: flex;
+            align-items: center;
+            margin: 4px 0;
+        }
+        .error-item::before {
+            content: "✗";
+            margin-right: 8px;
+        }
+        .file-list {
+            margin-top: 12px;
+            font-size: 0.9rem;
+            color: var(--gray);
+        }
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .file-item::before {
+            content: "✓";
+            color: var(--success);
+            margin-right: 8px;
+            font-weight: bold;
+        }
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #888;
+            font-size: 0.875rem;
+        }
+        @media (max-width: 600px) {
+            .content { padding: 20px; }
+            h1 { font-size: 1.5rem; }
         }
     </style>
 </head>
 <body>
-    <h1>Salesforce Metadata to Excel Data Dictionary</h1>
-    
-    <div class="instructions">
-        <h3>Instructions:</h3>
-        <p>1. Retrieve your Salesforce metadata using VSCode Salesforce extension (e.g., select "Standard" to generate package.xml and retrieve objects).</p>
-        <p>2. Zip the retrieved metadata folder (e.g., force-app/main/default/objects/) or select individual .object-meta.xml files.</p>
-        <p>3. Upload the ZIP file or multiple XML files below.</p>
-        <p>4. Click "Generate Excel" to create a data dictionary with one sheet per object, listing fields and metadata (e.g., name, type, label, description).</p>
-    </div>
+    <div class="container">
+        <header>
+            <h1>Salesforce Data Dictionary</h1>
+            <p class="subtitle">Convert Metadata XML → Excel (One Sheet Per Object)</p>
+        </header>
 
-    <div class="upload-area">
-        <p>Drag & drop ZIP/XML files here or click to browse.</p>
-        <input type="file" id="fileInput" accept=".zip,.xml" multiple onchange="handleFiles(event)" />
-        <div id="progress"></div>
-    </div>
+        <div class="content">
+            <div class="instructions">
+                <h3>How to Use:</h3>
+                <ol>
+                    <li>Retrieve metadata using <strong>VS Code + Salesforce Extension</strong></li>
+                    <li>Zip the <code>objects/</code> folder or select <code>*.object-meta.xml</code> files</li>
+                    <li>Drag & drop or click to upload</li>
+                    <li>Click <strong>Generate Excel</strong></li>
+                </ol>
+            </div>
 
-    <button id="generateBtn" onclick="generateExcel()" disabled>Generate Excel</button>
+            <div class="upload-box" id="uploadBox">
+                <div class="upload-icon">Upload Folder</div>
+                <p><strong>Drag & drop</strong> ZIP or XML files here</p>
+                <p style="color:#666; font-size:0.9rem;">or click to browse</p>
+                <input type="file" id="fileInput" class="file-input" accept=".zip,.xml" multiple />
+                <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                    Choose Files
+                </button>
+            </div>
+
+            <div id="progressContainer" class="progress-container" style="display:none;">
+                <div id="progressText" class="progress-text">
+                    <span id="statusText">Processing...</span>
+                    <span id="counter">0 objects</span>
+                </div>
+                <div id="fileList" class="file-list"></div>
+                <div id="errorList" class="error-list"></div>
+            </div>
+
+            <div style="text-align:center; margin-top:24px;">
+                <button id="generateBtn" class="btn btn-success" disabled onclick="generateExcel()">
+                    Generate Excel File
+                </button>
+            </div>
+        </div>
+
+        <footer>
+            100% Client-Side • No Data Leaves Your Browser • Built with JSZip & SheetJS
+        </footer>
+    </div>
 
     <script>
-        let filesContent = {}; // Store parsed content: {objectName: parsedXml}
+        let filesContent = {};
+        let processedCount = 0;
+        let errorCount = 0;
+        let totalFiles = 0;
 
-        // Handle file input (supports multiple files or single zip)
-        function handleFiles(event) {
-            const files = event.target.files;
-            const progress = document.getElementById('progress');
-            progress.textContent = 'Processing files...';
-            document.getElementById('generateBtn').disabled = true;
+        const uploadBox = document.getElementById('uploadBox');
+        const fileInput = document.getElementById('fileInput');
+        const progressContainer = document.getElementById('progressContainer');
+        const statusText = document.getElementById('statusText');
+        const counter = document.getElementById('counter');
+        const fileList = document.getElementById('fileList');
+        const errorList = document.getElementById('errorList');
+        const generateBtn = document.getElementById('generateBtn');
 
-            if (files.length === 0) return;
+        // Drag & Drop
+        ['dragenter', 'dragover'].forEach(event => {
+            uploadBox.addEventListener(event, e => {
+                e.preventDefault();
+                uploadBox.classList.add('dragover');
+            });
+        });
+        ['dragleave', 'drop'].forEach(event => {
+            uploadBox.addEventListener(event, e => {
+                e.preventDefault();
+                uploadBox.classList.remove('dragover');
+            });
+        });
+        uploadBox.addEventListener('drop', e => {
+            const files = e.dataTransfer.files;
+            if (files.length) handleFiles(files);
+        });
+        fileInput.addEventListener('change', e => {
+            if (e.target.files.length) handleFiles(e.target.files);
+        });
 
-            // Check if first file is ZIP
-            if (files[0].name.endsWith('.zip')) {
-                processZip(files[0]);
-            } else {
-                // Process multiple XML files
-                processXmlFiles(Array.from(files));
-            }
+        function resetState() {
+            filesContent = {};
+            processedCount = errorCount = totalFiles = 0;
+            fileList.innerHTML = '';
+            errorList.innerHTML = '';
+            generateBtn.disabled = true;
+            progressContainer.style.display = 'none';
         }
 
-        // Drag & drop support
-        const uploadArea = document.querySelector('.upload-area');
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.style.borderColor = '#007bff';
-        });
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.style.borderColor = '#ccc';
-        });
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.style.borderColor = '#ccc';
-            document.getElementById('fileInput').files = e.dataTransfer.files;
-            handleFiles({ target: { files: e.dataTransfer.files } });
-        });
+        function handleFiles(files) {
+            resetState();
+            const fileArray = Array.from(files);
+            totalFiles = fileArray.length;
+
+            if (totalFiles === 0) return;
+
+            progressContainer.style.display = 'block';
+            statusText.innerHTML = '<div class="spinner"></div> Processing files...';
+            counter.textContent = '0 objects';
+
+            if (fileArray[0].name.endsWith('.zip')) {
+                processZip(fileArray[0]);
+            } else {
+                processXmlFiles(fileArray);
+            }
+        }
 
         async function processZip(zipFile) {
             try {
                 const zip = await JSZip.loadAsync(zipFile);
                 const objectFiles = [];
-                zip.forEach((path, file) => {
-                    if (path.endsWith('.object-meta.xml')) {
-                        objectFiles.push({ path, file });
+
+                zip.forEach((relativePath, file) => {
+                    if (relativePath.endsWith('.object-meta.xml') && !file.dir) {
+                        objectFiles.push({ path: relativePath, file });
                     }
                 });
 
-                for (const { path, file } of objectFiles) {
-                    const xmlText = await file.async('text');
-                    const objectName = path.split('/').slice(-2, -1)[0]; // Extract object name from path like objects/MyObject/MyObject.object-meta.xml
-                    filesContent[objectName] = parseObjectXml(xmlText);
+                if (objectFiles.length === 0) {
+                    throw new Error('No .object-meta.xml files found in ZIP');
                 }
 
-                document.getElementById('progress').textContent = `Loaded ${Object.keys(filesContent).length} objects.`;
-                document.getElementById('generateBtn').disabled = Object.keys(filesContent).length === 0;
-            } catch (error) {
-                document.getElementById('progress').textContent = 'Error processing ZIP: ' + error.message;
+                for (const { path, file } of objectFiles) {
+                    try {
+                        const xmlText = await file.async('text');
+                        const objectName = extractObjectNameFromPath(path);
+                        if (objectName) {
+                            const fieldData = parseObjectXml(xmlText);
+                            if (fieldData.length > 0) {
+                                filesContent[objectName] = fieldData;
+                                addFileItem(objectName, true);
+                            }
+                        } else {
+                            addError(`Could not extract object name from: ${path.split('/').pop()}`);
+                        }
+                    } catch (err) {
+                        addError(`Failed to parse ${path.split('/').pop()}: ${err.message}`);
+                    }
+                    updateProgress();
+                }
+            } catch (err) {
+                statusText.textContent = 'Error';
+                addError(err.message);
             }
         }
 
         function processXmlFiles(xmlFiles) {
             xmlFiles.forEach(file => {
-                if (file.name.endsWith('.object-meta.xml')) {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        const objectName = file.name.replace('.object-meta.xml', '');
-                        filesContent[objectName] = parseObjectXml(e.target.result);
-                        updateProgress();
-                    };
-                    reader.readAsText(file);
+                if (!file.name.endsWith('.object-meta.xml')) {
+                    addError(`Skipped: ${file.name} (not an object metadata file)`);
+                    return;
                 }
+
+                const reader = new FileReader();
+                reader.onload = e => {
+                    try {
+                        const objectName = file.name.replace('.object-meta.xml', '');
+                        const fieldData = parseObjectXml(e.target.result);
+                        if (fieldData.length > 0) {
+                            filesContent[objectName] = fieldData;
+                            addFileItem(objectName, true);
+                        } else {
+                            addFileItem(objectName, false);
+                        }
+                    } catch (err) {
+                        addError(`Parse error in ${file.name}: ${err.message}`);
+                    }
+                    updateProgress();
+                };
+                reader.onerror = () => addError(`Failed to read ${file.name}`);
+                reader.readAsText(file);
             });
         }
 
-        function updateProgress() {
-            const count = Object.keys(filesContent).length;
-            const progress = document.getElementById('progress');
-            progress.textContent = `Loaded ${count} objects.`;
-            document.getElementById('generateBtn').disabled = count === 0;
+        function extractObjectNameFromPath(path) {
+            // Handle: objects/Account/Account.object-meta.xml
+            // Or: force-app/main/default/objects/Account/Account.object-meta.xml
+            const parts = path.split('/');
+            const fileName = parts.pop();
+            if (!fileName.endsWith('.object-meta.xml')) return null;
+
+            const folderName = parts.pop();
+            return folderName; // Usually matches file prefix
         }
 
         function parseObjectXml(xmlText) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
-            const fields = xmlDoc.querySelectorAll('fields > field');
-            const fieldData = Array.from(fields).map(field => {
-                const name = field.querySelector('fullName')?.textContent || '';
-                const type = field.querySelector('type')?.textContent || '';
-                const label = field.querySelector('label')?.textContent || '';
-                const description = field.querySelector('description')?.textContent || '';
-                const length = field.querySelector('length')?.textContent || '';
-                const precision = field.querySelector('precision')?.textContent || '';
-                const scale = field.querySelector('scale')?.textContent || '';
-                const required = field.querySelector('required')?.textContent === 'true' ? 'Yes' : 'No';
-                const unique = field.querySelector('unique')?.textContent === 'true' ? 'Yes' : 'No';
-                const defaultValue = field.querySelector('defaultValue')?.textContent || '';
-                return {
-                    'Field Name': name,
-                    'Type': type,
-                    'Label': label,
-                    'Description': description,
-                    'Length': length,
-                    'Precision': precision,
-                    'Scale': scale,
-                    'Required': required,
-                    'Unique': unique,
-                    'Default Value': defaultValue
-                };
-            });
-            // Add object name as first row or header if needed, but since sheet name is object, just fields
-            return fieldData;
-        }
+            const parserErrors = xmlDoc.querySelector('parsererror');
+            if (parserErrors) {
+                throw new Error('Invalid XML');
+            }
 
-        function generateExcel() {
-            if (Object.keys(filesContent).length === 0) return;
+            const fields = xmlDoc.querySelectorAll('fields');
+            const fieldData = [];
 
-            const wb = XLSX.utils.book_new();
+            fields.forEach(field => {
+                try {
+                    const name = getText(field, 'fullName') || '';
+                    const type = getText(field, 'type') || '';
+                    const label = getText(field, 'label') || '';
+                    const description = getText(field, 'description') || '';
+                    const length = getText(field, 'length') || '';
+                    const precision = getText(field, 'precision') || '';
+                    const scale = getText(field, 'scale') || '';
+                    const required = getText(field, 'required') === 'true' ? 'Yes' : 'No';
+                    const unique = getText(field, 'unique') === 'true' ? 'Yes' : 'No';
+                    const defaultValue = getText(field, 'defaultValue') || '';
+                    const referenceTo = getText(field, 'referenceTo') || '';
 
-            Object.entries(filesContent).forEach(([objectName, fieldData]) => {
-                if (fieldData.length > 0) {
-                    const ws = XLSX.utils.json_to_sheet(fieldData);
-                    XLSX.utils.book_append_sheet(wb, ws, objectName);
+                    // Skip if no name (invalid field)
+                    if (!name) return;
+
+                    fieldData.push({
+                        'Field Name': name,
+                        'API Name': name,
+                        'Type': type,
+                        'Label': label,
+                        'Description': description,
+                        'Length': length,
+                        'Precision': precision,
+                        'Scale': scale,
+                        'Required': required,
+                        'Unique': unique,
+                        'Default Value': defaultValue,
+                        'Reference To': referenceTo
+                    });
+                } catch (err) {
+                    // Skip malformed field
                 }
             });
 
-            const fileName = 'Salesforce_Data_Dictionary.xlsx';
-            XLSX.writeFile(wb, fileName);
-            document.getElementById('progress').textContent = `Downloaded ${fileName} with ${Object.keys(filesContent).length} sheets.`;
+            return fieldData;
+        }
+
+        function getText(parent, selector) {
+            const el = parent.querySelector(selector);
+            return el ? el.textContent.trim() : '';
+        }
+
+        function addFileItem(objectName, success) {
+            const div = document.createElement('div');
+            div.className = 'file-item';
+            div.innerHTML = `<strong>${objectName}</strong> — ${success ? 'Loaded' : 'No fields found'}`;
+            if (!success) div.style.color = '#aaa';
+            fileList.appendChild(div);
+        }
+
+        function addError(message) {
+            errorCount++;
+            const div = document.createElement('div');
+            div.className = 'error-item';
+            div.textContent = message;
+            errorList.appendChild(div);
+        }
+
+        function updateProgress() {
+            processedCount++;
+            const successCount = Object.keys(filesContent).length;
+            counter.textContent = `${successCount} objects`;
+
+            if (processedCount >= totalFiles) {
+                setTimeout(() => {
+                    statusText.textContent = 'Ready to generate';
+                    generateBtn.disabled = successCount === 0;
+                }, 300);
+            }
+        }
+
+        function generateExcel() {
+            if (Object.keys(filesContent).length === 0) {
+                alert('No valid objects to export.');
+                return;
+            }
+
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<div class="spinner"></div> Generating...';
+
+            setTimeout(() => {
+                try {
+                    const wb = XLSX.utils.book_new();
+
+                    Object.entries(filesContent).forEach(([objectName, data]) => {
+                        const ws = XLSX.utils.json_to_sheet(data);
+                        // Auto-size columns
+                        const colWidths = [];
+                        data.forEach(row => {
+                            Object.values(row).forEach((val, i) => {
+                                const len = String(val || '').length;
+                                colWidths[i] = Math.max(colWidths[i] || 10, len);
+                            });
+                        });
+                        ws['!cols'] = colWidths.map(w => ({ wch: w + 2 }));
+                        XLSX.utils.book_append_sheet(wb, ws, safeSheetName(objectName));
+                    });
+
+                    const fileName = `Salesforce_Data_Dictionary_${new Date().toISOString().slice(0,10)}.xlsx`;
+                    XLSX.writeFile(wb, fileName);
+
+                    statusText.textContent = `Downloaded: ${fileName}`;
+                    generateBtn.innerHTML = 'Generate Excel File';
+                    generateBtn.disabled = false;
+                } catch (err) {
+                    alert('Export failed: ' + err.message);
+                    generateBtn.disabled = false;
+                }
+            }, 100);
+        }
+
+        function safeSheetName(name) {
+            return name.replace(/[\\\/*\[\]:?]/g, '_').substring(0, 31);
         }
     </script>
 </body>
