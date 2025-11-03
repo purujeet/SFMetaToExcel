@@ -111,31 +111,30 @@ footer{text-align:center;padding:20px;color:#888;font-size:.875rem;}
 </div>
 <script>
 /* --------------------------------------------------------------
-   FULL FIXED SCRIPT – SFDX Data Dictionary (ZIP + XML)
-   - Correctly parses object & field metadata
-   - No duplicate object names in UI
-   - Accurate object/field counter
-   - Works with ZIP or individual .xml files
+   SFDX Data Dictionary – FINAL FIXED VERSION
+   • Correctly reads ZIP + individual XML
+   • Shows ONE line per object (no duplicates)
+   • Accurate counter: X objects (Y fields)
    -------------------------------------------------------------- */
 let objectData = {}, processed = 0, total = 0, errors = 0, totalFields = 0;
-let shownObjects = new Set();  // <-- Prevents duplicate UI entries
+let shownObjects = new Set();
 
-const uploadBox      = document.getElementById('uploadBox');
-const fileInput      = document.getElementById('fileInput');
-const progCont       = document.getElementById('progressContainer');
-const statusText     = document.getElementById('statusText');
-const counter        = document.getElementById('counter');
-const fileList       = document.getElementById('fileList');
-const errorList      = document.getElementById('errorList');
-const generateBtn    = document.getElementById('generateBtn');
+const uploadBox   = document.getElementById('uploadBox');
+const fileInput   = document.getElementById('fileInput');
+const progCont    = document.getElementById('progressContainer');
+const statusText  = document.getElementById('statusText');
+const counter     = document.getElementById('counter');
+const fileList    = document.getElementById('fileList');
+const errorList   = document.getElementById('errorList');
+const generateBtn = document.getElementById('generateBtn');
 
-/* ---- Drag & Drop UI ------------------------------------------------ */
-['dragenter','dragover'].forEach(ev=>uploadBox.addEventListener(ev,e=>{e.preventDefault();uploadBox.classList.add('dragover');}));
-['dragleave','drop'].forEach(ev=>uploadBox.addEventListener(ev,e=>{e.preventDefault();uploadBox.classList.remove('dragover');}));
-uploadBox.addEventListener('drop', e => { if(e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
-fileInput.addEventListener('change', e => { if(e.target.files.length) handleFiles(e.target.files); });
+/* ---- Drag & Drop ------------------------------------------------ */
+['dragenter','dragover'].forEach(ev => uploadBox.addEventListener(ev, e => {e.preventDefault(); uploadBox.classList.add('dragover');}));
+['dragleave','drop'].forEach(ev => uploadBox.addEventListener(ev, e => {e.preventDefault(); uploadBox.classList.remove('dragover');}));
+uploadBox.addEventListener('drop', e => { if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', e => { if (e.target.files.length) handleFiles(e.target.files); });
 
-/* ---- Reset State --------------------------------------------------- */
+/* ---- Reset ------------------------------------------------------ */
 function reset() {
   objectData = {}; processed = total = errors = totalFields = 0;
   shownObjects.clear();
@@ -143,24 +142,24 @@ function reset() {
   progCont.style.display = 'none';
 }
 
-/* ---- Main File Handler --------------------------------------------- */
+/* ---- Main ------------------------------------------------------- */
 function handleFiles(fileListObj) {
-  reset(); 
-  const files = Array.from(fileListObj); 
+  reset();
+  const files = Array.from(fileListObj);
   total = files.length;
   if (!total) return;
   progCont.style.display = 'block';
   statusText.innerHTML = '<div class="spinner"></div> Processing...';
   counter.textContent = '0 objects';
-  
+
   const zips = files.filter(f => f.name.endsWith('.zip'));
   const xmls = files.filter(f => f.name.endsWith('.xml'));
-  
+
   if (zips.length) zips.forEach(f => processZip(f));
   else processIndividualFiles(xmls);
 }
 
-/* ---- Process ZIP --------------------------------------------------- */
+/* ---- ZIP -------------------------------------------------------- */
 async function processZip(zipFile) {
   try {
     const zip = await JSZip.loadAsync(zipFile);
@@ -174,17 +173,17 @@ async function processZip(zipFile) {
       }
     });
 
-    if (!entries.length) throw new Error('No object or field files found in ZIP');
+    if (!entries.length) throw new Error('No metadata files found in ZIP');
 
     for (const {relPath, zipEntry} of entries) {
       try {
         const text = await zipEntry.async('text');
         if (relPath.endsWith('.object-meta.xml')) parseObjectFile(relPath, text);
-        else if (relPath.endsWith('.field-meta.xml')) parseFieldFile(relPath, text);
+        else parseFieldFile(relPath, text);
       } catch (e) {
         addError(`Error in ${relPath.split('/').pop()}: ${e.message}`);
       }
-      updateProgress();
+      updateProgress();   // only updates counter
     }
   } catch (e) {
     statusText.textContent = 'Error';
@@ -192,17 +191,16 @@ async function processZip(zipFile) {
   }
 }
 
-/* ---- Process Individual XML Files ---------------------------------- */
+/* ---- Individual XML --------------------------------------------- */
 function processIndividualFiles(files) {
   files.forEach(f => {
     if (!f.name.endsWith('.xml')) { addError(`Skipped: ${f.name}`); updateProgress(); return; }
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        // Fake path to make extractor work: objects/ActualFileName.xml
         const fakePath = `objects/${f.name}`;
         if (f.name.endsWith('.object-meta.xml')) parseObjectFile(fakePath, e.target.result);
-        else if (f.name.endsWith('.field-meta.xml')) parseFieldFile(fakePath, e.target.result);
+        else parseFieldFile(fakePath, e.target.result);
       } catch (err) {
         addError(`Parse error in ${f.name}: ${err.message}`);
       }
@@ -213,7 +211,7 @@ function processIndividualFiles(files) {
   });
 }
 
-/* ---- Parse Object File --------------------------------------------- */
+/* ---- Parse Object ----------------------------------------------- */
 function parseObjectFile(path, xmlText) {
   const objectName = extractObjectNameFromPath(path);
   if (!objectName) return;
@@ -231,7 +229,7 @@ function parseObjectFile(path, xmlText) {
   }
 }
 
-/* ---- Parse Field File ---------------------------------------------- */
+/* ---- Parse Field ------------------------------------------------ */
 function parseFieldFile(path, xmlText) {
   const objectName = extractObjectNameFromPath(path);
   if (!objectName) return;
@@ -263,42 +261,38 @@ function parseFieldFile(path, xmlText) {
   objectData[objectName].fields.push(field);
 }
 
-/* ---- Extract Object Name from Path (ZIP or Single File) ------------ */
+/* ---- Extract Object Name ---------------------------------------- */
 function extractObjectNameFromPath(path) {
   const parts = path.replace('\\', '/').split('/');
-
-  // Case 1: Standard SFDX path → .../objects/ObjectName/...
   const objectsIdx = parts.findIndex(p => p === 'objects');
   if (objectsIdx !== -1 && objectsIdx + 1 < parts.length) {
     return parts[objectsIdx + 1];
   }
 
-  // Case 2: Single file dropped → try to infer from filename
   const file = parts[parts.length - 1];
   if (file.endsWith('.field-meta.xml')) {
-    const match = file.match(/^(.+?)(?:__c)?\.field-meta\.xml$/i);
-    return match ? match[1] : null;
+    const m = file.match(/^(.+?)(?:__c)?\.field-meta\.xml$/i);
+    return m ? m[1] : null;
   }
   if (file.endsWith('.object-meta.xml')) {
-    const match = file.match(/^(.+?)\.object-meta\.xml$/i);
-    return match ? match[1] : null;
+    const m = file.match(/^(.+?)\.object-meta\.xml$/i);
+    return m ? m[1] : null;
   }
   return null;
 }
 
-/* ---- UI: Add File Item (No Duplicates) ----------------------------- */
-function addFileItem(name, success) {
+/* ---- UI: Add Item (no duplicates) ------------------------------- */
+function addFileItem(name) {
   if (shownObjects.has(name)) return;
   shownObjects.add(name);
 
   const div = document.createElement('div');
   div.className = 'file-item';
-  div.innerHTML = `<strong>${name}</strong> — ${success ? 'Loaded' : 'No fields'}`;
-  if (!success) div.style.color = '#999';
+  div.innerHTML = `<strong>${name}</strong> — Loaded`;
   fileList.appendChild(div);
 }
 
-/* ---- UI: Error Item ------------------------------------------------ */
+/* ---- UI: Error -------------------------------------------------- */
 function addError(msg) {
   errors++;
   const div = document.createElement('div');
@@ -307,28 +301,31 @@ function addError(msg) {
   errorList.appendChild(div);
 }
 
-/* ---- Update Progress & Finalize UI --------------------------------- */
+/* ---- Update Counter & Build List ONCE --------------------------- */
 function updateProgress() {
   processed++;
   const okObjects = Object.keys(objectData).filter(o => objectData[o].fields.length > 0).length;
   counter.textContent = `${okObjects} object${okObjects === 1 ? '' : 's'} (${totalFields} field${totalFields === 1 ? '' : 's'})`;
 
+  // === ONLY when ALL files are done ===
   if (processed >= total) {
     setTimeout(() => {
       statusText.textContent = 'Ready';
       generateBtn.disabled = totalFields === 0;
 
-      // Clear and rebuild list once
+      // Clear previous list & reset tracker
       fileList.innerHTML = '';
       shownObjects.clear();
+
+      // Add ONE line per object
       Object.keys(objectData).forEach(obj => {
-        if (objectData[obj].fields.length) addFileItem(obj, true);
+        if (objectData[obj].fields.length) addFileItem(obj);
       });
     }, 200);
   }
 }
 
-/* ---- Generate Excel ------------------------------------------------ */
+/* ---- Generate Excel --------------------------------------------- */
 function generateExcel() {
   const valid = Object.entries(objectData).filter(([,d]) => d.fields.length > 0);
   if (!valid.length) { alert('No fields to export.'); return; }
