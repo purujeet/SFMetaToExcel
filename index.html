@@ -111,27 +111,34 @@ footer{text-align:center;padding:20px;color:#888;font-size:.875rem;}
 </div>
 
 <script>
-let objectData = {}, processed = 0, total = 0, errors = 0;
-const uploadBox = document.getElementById('uploadBox');
-const fileInput = document.getElementById('fileInput');
-const progCont = document.getElementById('progressContainer');
-const statusText = document.getElementById('statusText');
-const counter = document.getElementById('counter');
-const fileList = document.getElementById('fileList');
-const errorList = document.getElementById('errorList');
-const generateBtn = document.getElementById('generateBtn');
+/* --------------------------------------------------------------
+   REPLACEMENT SCRIPT – fixes field-parsing for ZIP & single XML
+   -------------------------------------------------------------- */
+let objectData = {}, processed = 0, total = 0, errors = 0, totalFields = 0;
 
+const uploadBox      = document.getElementById('uploadBox');
+const fileInput      = document.getElementById('fileInput');
+const progCont       = document.getElementById('progressContainer');
+const statusText     = document.getElementById('statusText');
+const counter        = document.getElementById('counter');
+const fileList       = document.getElementById('fileList');
+const errorList      = document.getElementById('errorList');
+const generateBtn    = document.getElementById('generateBtn');
+
+/* ---- drag & drop UI ------------------------------------------------ */
 ['dragenter','dragover'].forEach(ev=>uploadBox.addEventListener(ev,e=>{e.preventDefault();uploadBox.classList.add('dragover');}));
 ['dragleave','drop'].forEach(ev=>uploadBox.addEventListener(ev,e=>{e.preventDefault();uploadBox.classList.remove('dragover');}));
 uploadBox.addEventListener('drop', e => { if(e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
 fileInput.addEventListener('change', e => { if(e.target.files.length) handleFiles(e.target.files); });
 
+/* ---- reset ------------------------------------------------------- */
 function reset() {
-  objectData = {}; processed = total = errors = 0;
+  objectData = {}; processed = total = errors = totalFields = 0;
   fileList.innerHTML = ''; errorList.innerHTML = ''; generateBtn.disabled = true;
   progCont.style.display = 'none';
 }
 
+/* ---- main entry -------------------------------------------------- */
 function handleFiles(fileListObj) {
   reset(); const files = Array.from(fileListObj); total = files.length;
   if (!total) return;
@@ -144,24 +151,30 @@ function handleFiles(fileListObj) {
   else processIndividualFiles(xmls);
 }
 
+/* ---- ZIP processing --------------------------------------------- */
 async function processZip(zipFile) {
   try {
     const zip = await JSZip.loadAsync(zipFile);
     const entries = [];
-    zip.forEach((path, file) => {
-      if ((path.endsWith('.object-meta.xml') || path.includes('/fields/')) && !file.dir) {
-        entries.push({ path, file });
+
+    // collect *all* relevant files inside the zip
+    zip.forEach((relPath, zipEntry) => {
+      if (zipEntry.dir) return;
+      const low = relPath.toLowerCase();
+      if (low.endsWith('.object-meta.xml') || low.endsWith('.field-meta.xml')) {
+        entries.push({relPath, zipEntry});
       }
     });
+
     if (!entries.length) throw new Error('No object or field files found in ZIP');
 
-    for (const { path, file } of entries) {
+    for (const {relPath, zipEntry} of entries) {
       try {
-        const content = await file.async('text');
-        if (path.endsWith('.object-meta.xml')) parseObjectFile(path, content);
-        else if (path.includes('/fields/') && path.endsWith('.field-meta.xml')) parseFieldFile(path, content);
+        const text = await zipEntry.async('text');
+        if (relPath.endsWith('.object-meta.xml')) parseObjectFile(relPath, text);
+        else if (relPath.endsWith('.field-meta.xml')) parseFieldFile(relPath, text);
       } catch (e) {
-        addError(`Error in ${path.split('/').pop()}: ${e.message}`);
+        addError(`Error in ${relPath.split('/').pop()}: ${e.message}`);
       }
       updateProgress();
     }
@@ -171,15 +184,16 @@ async function processZip(zipFile) {
   }
 }
 
+/* ---- Individual XML files --------------------------------------- */
 function processIndividualFiles(files) {
   files.forEach(f => {
     if (!f.name.endsWith('.xml')) { addError(`Skipped: ${f.name}`); updateProgress(); return; }
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        const path = f.name;
-        if (path.includes('fields') && path.endsWith('.field-meta.xml')) parseFieldFile(path, e.target.result);
-        else if (path.endsWith('.object-meta.xml')) parseObjectFile(path, e.target.result);
+        const fakePath = `objects/${f.name}`;   // minimal path that works for both
+        if (f.name.endsWith('.object-meta.xml')) parseObjectFile(fakePath, e.target.result);
+        else if (f.name.endsWith('.field-meta.xml')) parseFieldFile(fakePath, e.target.result);
       } catch (err) {
         addError(`Parse error in ${f.name}: ${err.message}`);
       }
@@ -190,54 +204,77 @@ function processIndividualFiles(files) {
   });
 }
 
+/* ---- OBJECT parser ---------------------------------------------- */
 function parseObjectFile(path, xmlText) {
   const objectName = extractObjectNameFromPath(path);
   if (!objectName) return;
+
   const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
   if (doc.querySelector('parsererror')) throw new Error('Invalid XML');
+
   const label = doc.querySelector('label')?.textContent.trim() || '';
   const description = doc.querySelector('description')?.textContent.trim() || '';
-  if (!objectData[objectName]) objectData[objectName] = { label, description, fields: [] };
-  else Object.assign(objectData[objectName], { label, description });
+
+  if (!objectData[objectName]) objectData[objectName] = {label, description, fields: []};
+  else Object.assign(objectData[objectName], {label, description});
 }
 
+/* ---- FIELD parser ----------------------------------------------- */
 function parseFieldFile(path, xmlText) {
-  const objectName = extractObjectNameFromFieldPath(path);
+  const objectName = extractObjectNameFromPath(path);
   if (!objectName) return;
+
   const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
   if (doc.querySelector('parsererror')) throw new Error('Invalid XML');
-  const f = q => doc.querySelector(q)?.textContent.trim() || '';
+
+  const q = s => doc.querySelector(s)?.textContent.trim() || '';
   const field = {
-    'Field Name': f('fullName'),
-    'Type': f('type'),
-    'Label': f('label'),
-    'Description': f('description'),
-    'Length': f('length'),
-    'Precision': f('precision'),
-    'Scale': f('scale'),
-    'Required': f('required') === 'true' ? 'Yes' : 'No',
-    'Unique': f('unique') === 'true' ? 'Yes' : 'No',
-    'Default Value': f('defaultValue'),
-    'Reference To': f('referenceTo')
+    'Field Name':     q('fullName'),
+    'Type':           q('type'),
+    'Label':          q('label'),
+    'Description':    q('description'),
+    'Length':         q('length'),
+    'Precision':      q('precision'),
+    'Scale':          q('scale'),
+    'Required':       q('required') === 'true' ? 'Yes' : 'No',
+    'Unique':         q('unique') === 'true' ? 'Yes' : 'No',
+    'Default Value':  q('defaultValue'),
+    'Reference To':   q('referenceTo')
   };
-  if (!field['Field Name']) return;
-  if (!objectData[objectName]) objectData[objectName] = { label:'', description:'', fields:[] };
+
+  if (!field['Field Name']) return;                     // ignore empty entries
+  totalFields++;
+
+  if (!objectData[objectName]) objectData[objectName] = {label:'', description:'', fields:[]};
   objectData[objectName].fields.push(field);
 }
 
+/* ---- PATH → OBJECT NAME (works for both ZIP & single files) ---- */
 function extractObjectNameFromPath(path) {
-  const parts = path.split('/');
-  const file = parts.pop();
-  if (!file.endsWith('.object-meta.xml')) return null;
-  return parts.pop();
+  // Normalise slashes
+  const parts = path.replace('\\','/').split('/');
+
+  // 1. Look for the "objects" folder (SFDX layout)
+  const objectsIdx = parts.findIndex(p => p === 'objects');
+  if (objectsIdx !== -1 && objectsIdx + 1 < parts.length) {
+    return parts[objectsIdx + 1];               // next folder = object name
+  }
+
+  // 2. Fallback for single files that were renamed (e.g. Account__c.field-meta.xml)
+  const file = parts[parts.length - 1];
+  if (file.endsWith('.field-meta.xml')) {
+    // try to extract the object name from the filename:  <Object>__c.field-meta.xml
+    const m = file.match(/^(.+?)(?:__c)?\.field-meta\.xml$/i);
+    return m ? m[1] : null;
+  }
+  if (file.endsWith('.object-meta.xml')) {
+    const m = file.match(/^(.+?)\.object-meta\.xml$/i);
+    return m ? m[1] : null;
+  }
+  return null;
 }
 
-function extractObjectNameFromFieldPath(path) {
-  const parts = path.split('/');
-  const idx = parts.findIndex(p => p === 'objects');
-  return idx !== -1 ? parts[idx + 1] : null;
-}
-
+/* ---- UI helpers ------------------------------------------------- */
 function addFileItem(name, success) {
   const div = document.createElement('div');
   div.className = 'file-item';
@@ -252,51 +289,52 @@ function addError(msg) {
 }
 function updateProgress() {
   processed++;
-  const ok = Object.keys(objectData).filter(o => objectData[o].fields.length > 0).length;
-  counter.textContent = `${ok} object${ok === 1 ? '' : 's'}`;
+  const okObjects = Object.keys(objectData).filter(o => objectData[o].fields.length > 0).length;
+  counter.textContent = `${okObjects} object${okObjects===1?'':'s'} (${totalFields} field${totalFields===1?'':'s'})`;
+
   if (processed >= total) {
     setTimeout(() => {
       statusText.textContent = 'Ready';
-      generateBtn.disabled = ok === 0;
+      generateBtn.disabled = totalFields === 0;
       Object.keys(objectData).forEach(obj => {
-        if (objectData[obj].fields.length > 0) addFileItem(obj, true);
+        if (objectData[obj].fields.length) addFileItem(obj, true);
       });
     }, 200);
   }
 }
 
+/* ---- Excel generation (unchanged) ------------------------------- */
 function generateExcel() {
-  const validObjects = Object.entries(objectData).filter(([_, data]) => data.fields.length > 0);
-  if (!validObjects.length) { alert('No fields to export.'); return; }
+  const valid = Object.entries(objectData).filter(([,d])=>d.fields.length>0);
+  if (!valid.length) { alert('No fields to export.'); return; }
   generateBtn.disabled = true;
   generateBtn.innerHTML = '<div class="spinner"></div> Building...';
   setTimeout(() => {
     try {
       const wb = XLSX.utils.book_new();
-      validObjects.forEach(([objName, data]) => {
-        const rows = data.fields.map(f => ({...f,'Object Label':data.label,'Object Description':data.description}));
+      valid.forEach(([obj, data]) => {
+        const rows = data.fields.map(f=>({...f,'Object Label':data.label,'Object Description':data.description}));
         const ws = XLSX.utils.json_to_sheet(rows);
         const colW = [];
-        rows.forEach(r => Object.values(r).forEach((v,i)=>{
-          const len = String(v || '').length;
-          colW[i] = Math.max(colW[i] || 10, len);
+        rows.forEach(r=>Object.values(r).forEach((v,i)=>{
+          const len = String(v||'').length;
+          colW[i] = Math.max(colW[i]||10, len);
         }));
-        ws['!cols'] = colW.map(w => ({ wch: w + 2 }));
-        XLSX.utils.book_append_sheet(wb, ws, safeName(objName));
+        ws['!cols'] = colW.map(w=>({wch:w+2}));
+        XLSX.utils.book_append_sheet(wb, ws, safeName(obj));
       });
       const fname = `SFDX_Data_Dictionary_${new Date().toISOString().slice(0,10)}.xlsx`;
       XLSX.writeFile(wb, fname);
       statusText.textContent = `Downloaded ${fname}`;
     } catch (e) {
-      alert('Export failed: ' + e.message);
+      alert('Export failed: '+e.message);
     } finally {
       generateBtn.disabled = false;
       generateBtn.textContent = 'Generate Excel File';
     }
   }, 50);
 }
-
-function safeName(n) { return n.replace(/[\\\/*\[\]:?]/g, '_').substring(0, 31); }
+function safeName(n){return n.replace(/[\\\/*\[\]:?]/g,'_').substring(0,31);}
 </script>
 </body>
 </html>
