@@ -95,15 +95,11 @@
       font-weight: 600; cursor: pointer; transition: var(--transition); margin-top: 20px;
       font-size: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,.1);
     }
-    .btn-primary {
-      background: var(--primary); color: #fff;
-    }
+    .btn-primary { background: var(--primary); color: #fff; }
     .btn-primary:hover:not(:disabled) {
       background: #0056b3; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,123,255,.3);
     }
-    .btn-success {
-      background: var(--success); color: #fff;
-    }
+    .btn-success { background: var(--success); color: #fff; }
     .btn-success:hover:not(:disabled) {
       background: #218838; transform: translateY(-2px);
     }
@@ -136,6 +132,19 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+    /* Object List */
+    .object-list {
+      margin-top: 16px; max-height: 200px; overflow-y: auto; padding-right: 8px;
+    }
+    .object-item {
+      display: flex; align-items: center; padding: 6px 0; font-size: .95rem;
+      border-bottom: 1px solid #eee;
+    }
+    .object-item::before {
+      content: "Checkmark"; color: var(--success); margin-right: 8px; font-weight: bold;
+    }
+    [data-theme="dark"] .object-item { border-color: #444; }
 
     .error-list { margin-top: 12px; font-size: .9rem; }
     .error-item {
@@ -211,6 +220,7 @@
         <div class="progress-bar">
           <div class="progress-fill" id="progressFill"></div>
         </div>
+        <div id="objectList" class="object-list"></div>
         <div id="errorList" class="error-list"></div>
       </div>
 
@@ -227,9 +237,12 @@
 
   <script>
     /* --------------------------------------------------------------
-       SFDX Data Dictionary – ENHANCED UI + FULLY FUNCTIONAL
+       SFDX Data Dictionary – FINAL POLISHED VERSION
+       • Clean object list (no duplicates)
+       • Beautiful Excel with bold headers, freeze, colors
        -------------------------------------------------------------- */
     let objectData = {}, processed = 0, total = 0, errors = 0, totalFields = 0;
+    let shownObjects = new Set();
 
     const uploadBox     = document.getElementById('uploadBox');
     const fileInput     = document.getElementById('fileInput');
@@ -238,6 +251,7 @@
     const objCount      = document.getElementById('objCount');
     const fieldCount    = document.getElementById('fieldCount');
     const progressFill  = document.getElementById('progressFill');
+    const objectList    = document.getElementById('objectList');
     const errorList     = document.getElementById('errorList');
     const generateBtn   = document.getElementById('generateBtn');
     const successCheck  = document.getElementById('successCheck');
@@ -259,8 +273,8 @@
     /* ---- Reset ------------------------------------------------------ */
     function reset() {
       objectData = {}; processed = total = errors = totalFields = 0;
-      errorList.innerHTML = ''; generateBtn.disabled = true;
-      progCont.style.display = 'none'; successCheck.style.display = 'none';
+      shownObjects.clear(); objectList.innerHTML = ''; errorList.innerHTML = '';
+      generateBtn.disabled = true; progCont.style.display = 'none'; successCheck.style.display = 'none';
       progressFill.style.width = '0%';
     }
 
@@ -375,6 +389,16 @@
       return null;
     }
 
+    /* ---- UI: Add Object (No Duplicates) ----------------------------- */
+    function addObjectItem(name) {
+      if (shownObjects.has(name)) return;
+      shownObjects.add(name);
+      const div = document.createElement('div');
+      div.className = 'object-item';
+      div.innerHTML = `<strong>${name}</strong>`;
+      objectList.appendChild(div);
+    }
+
     /* ---- UI: Error -------------------------------------------------- */
     function addError(msg) {
       errors++;
@@ -384,7 +408,7 @@
       errorList.appendChild(div);
     }
 
-    /* ---- Update Progress -------------------------------------------- */
+    /* ---- Update Progress + Build List Once -------------------------- */
     function updateProgress() {
       processed++;
       const okObjects = Object.keys(objectData).filter(o => objectData[o].fields.length > 0).length;
@@ -397,33 +421,71 @@
           statusText.innerHTML = '<i class="fas fa-check-circle" style="color:var(--success);margin-right:8px;"></i> Ready';
           generateBtn.disabled = totalFields === 0;
           successCheck.style.display = 'block';
+
+          // Build list once
+          objectList.innerHTML = '';
+          shownObjects.clear();
+          Object.keys(objectData).forEach(obj => {
+            if (objectData[obj].fields.length) addObjectItem(obj);
+          });
         }, 300);
       }
     }
 
-    /* ---- Generate Excel --------------------------------------------- */
+    /* ---- Generate Excel – FORMATTED --------------------------------- */
     function generateExcel() {
       const valid = Object.entries(objectData).filter(([,d]) => d.fields.length > 0);
       if (!valid.length) { alert('No fields to export.'); return; }
+
       generateBtn.disabled = true;
       generateBtn.innerHTML = '<div class="spinner"></div> Building Excel...';
 
       setTimeout(() => {
         try {
           const wb = XLSX.utils.book_new();
+
           valid.forEach(([obj, data]) => {
-            const rows = data.fields.map(f => ({
-              ...f, 'Object Label': data.label, 'Object Description': data.description
-            }));
-            const ws = XLSX.utils.json_to_sheet(rows);
-            const colW = [];
-            rows.forEach(r => Object.values(r).forEach((v, i) => {
-              const len = String(v || '').length;
-              colW[i] = Math.max(colW[i] || 10, len);
-            }));
-            ws['!cols'] = colW.map(w => ({ wch: w + 2 }));
+            const headers = [
+              'Field Name', 'Type', 'Label', 'Description', 'Length', 'Precision', 'Scale',
+              'Required', 'Unique', 'Default Value', 'Reference To',
+              'Object Label', 'Object Description'
+            ];
+
+            const rows = data.fields.map(f => [
+              f['Field Name'], f['Type'], f['Label'], f['Description'],
+              f['Length'], f['Precision'], f['Scale'], f['Required'],
+              f['Unique'], f['Default Value'], f['Reference To'],
+              data.label, data.description
+            ]);
+
+            const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+            // Bold header
+            headers.forEach((_, i) => {
+              const cell = ws[XLSX.utils.encode_cell({r:0, c:i})];
+              if (cell) cell.s = { font: { bold: true } };
+            });
+
+            // Auto-size columns
+            const colWidths = headers.map((h, i) => {
+              const max = Math.max(
+                h.length,
+                ...rows.map(row => String(row[i] || '').length)
+              );
+              return { wch: Math.min(max + 3, 50) };
+            });
+            ws['!cols'] = colWidths;
+
+            // Freeze header row
+            ws['!freeze'] = 'A2';
+
+            // Sheet tab color
+            const color = '#' + (Math.random()*0xffffff<<0).toString(16).padStart(6,'0');
             XLSX.utils.book_append_sheet(wb, ws, safeName(obj));
+            const sheet = wb.Sheets[safeName(obj)];
+            sheet['!tabColor'] = { rgb: color.slice(1) };
           });
+
           const fname = `SFDX_Data_Dictionary_${new Date().toISOString().slice(0,10)}.xlsx`;
           XLSX.writeFile(wb, fname);
           statusText.innerHTML = `<i class="fas fa-download" style="margin-right:8px;"></i> ${fname}`;
