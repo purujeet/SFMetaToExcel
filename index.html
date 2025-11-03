@@ -133,7 +133,7 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
-    /* Object List */
+    /* Object List – FIXED CHECKMARK */
     .object-list {
       margin-top: 16px; max-height: 200px; overflow-y: auto; padding-right: 8px;
     }
@@ -237,9 +237,7 @@
 
   <script>
     /* --------------------------------------------------------------
-       SFDX Data Dictionary – FINAL POLISHED VERSION
-       • Clean object list (no duplicates)
-       • Beautiful Excel with bold headers, freeze, colors
+       SFDX Data Dictionary – FINAL: Checkmark + Colorful Headers
        -------------------------------------------------------------- */
     let objectData = {}, processed = 0, total = 0, errors = 0, totalFields = 0;
     let shownObjects = new Set();
@@ -389,7 +387,7 @@
       return null;
     }
 
-    /* ---- UI: Add Object (No Duplicates) ----------------------------- */
+    /* ---- UI: Add Object (Checkmark + No Duplicates) ----------------- */
     function addObjectItem(name) {
       if (shownObjects.has(name)) return;
       shownObjects.add(name);
@@ -422,7 +420,6 @@
           generateBtn.disabled = totalFields === 0;
           successCheck.style.display = 'block';
 
-          // Build list once
           objectList.innerHTML = '';
           shownObjects.clear();
           Object.keys(objectData).forEach(obj => {
@@ -432,7 +429,7 @@
       }
     }
 
-    /* ---- Generate Excel – FORMATTED --------------------------------- */
+    /* ---- Generate Excel – COLORFUL HEADERS -------------------------- */
     function generateExcel() {
       const valid = Object.entries(objectData).filter(([,d]) => d.fields.length > 0);
       if (!valid.length) { alert('No fields to export.'); return; }
@@ -460,10 +457,14 @@
 
             const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
 
-            // Bold header
+            // COLORFUL + BOLD HEADER
             headers.forEach((_, i) => {
-              const cell = ws[XLSX.utils.encode_cell({r:0, c:i})];
-              if (cell) cell.s = { font: { bold: true } };
+              const cellAddr = XLSX.utils.encode_cell({r: 0, c: i});
+              if (!ws[cellAddr]) ws[cellAddr] = { v: headers[i] };
+              ws[cellAddr].s = {
+                font: { bold: true, color: { rgb: "FFFFFF" } },
+                fill: { fgColor: { rgb: "1565C0" } }  // Dark blue
+              };
             });
 
             // Auto-size columns
@@ -476,10 +477,10 @@
             });
             ws['!cols'] = colWidths;
 
-            // Freeze header row
+            // Freeze header
             ws['!freeze'] = 'A2';
 
-            // Sheet tab color
+            // Tab color
             const color = '#' + (Math.random()*0xffffff<<0).toString(16).padStart(6,'0');
             XLSX.utils.book_append_sheet(wb, ws, safeName(obj));
             const sheet = wb.Sheets[safeName(obj)];
