@@ -3,120 +3,252 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SFDX Data Dictionary Generator</title>
+  <title>SFDX Data Dictionary</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
-    :root{
-      --primary:#007bff;--success:#28a745;--danger:#dc3545;--gray:#6c757d;
-      --light:#f8f9fa;--dark:#212529;--border:#dee2e6;--radius:12px;--shadow:0 8px 30px rgba(0,0,0,.1);
+    :root {
+      --primary: #007bff; --success: #28a745; --danger: #dc3545; --warning: #ffc107;
+      --light: #f8f9fa; --dark: #212529; --gray: #6c757d; --border: #dee2e6;
+      --radius: 16px; --shadow: 0 12px 40px rgba(0,0,0,.12); --transition: .3s ease;
     }
-    *{box-sizing:border-box;margin:0;padding:0;}
-    body{
-      font-family:'Inter',sans-serif;background:linear-gradient(135deg,#f5f7fa 0%,#c3cfe2 100%);
-      color:var(--dark);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;
+    [data-theme="dark"] {
+      --light: #1a1a1a; --dark: #f8f9fa; --border: #333; --gray: #aaa;
+      background: #0f0f0f; color: #eee;
     }
-    .container{max-width:960px;width:100%;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
-    header{background:var(--primary);color:#fff;padding:24px;text-align:center;}
-    h1{margin:0;font-size:1.9rem;font-weight:700;}
-    .subtitle{font-size:1rem;opacity:.9;margin-top:6px;}
-    .content{padding:32px;}
-    .instructions{
-      background:#e3f2fd;border-left:4px solid var(--primary);padding:16px;border-radius:8px;
-      margin-bottom:24px;font-size:.95rem;
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: var(--dark); min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 20px; transition: var(--transition);
     }
-    .instructions h3{margin:0 0 10px;color:var(--primary);}
-    .instructions ol{margin:0;padding-left:20px;}
-    .instructions li{margin:6px 0;}
-    .upload-box{
-      border:3px dashed #ccc;border-radius:var(--radius);padding:48px 24px;text-align:center;
-      transition:.3s;background:#fafafa;cursor:pointer;position:relative;
+    .container {
+      max-width: 960px; width: 100%; background: #fff; border-radius: var(--radius);
+      box-shadow: var(--shadow); overflow: hidden; position: relative;
     }
-    .upload-box:hover,.upload-box.dragover{border-color:var(--primary);background:#f0f8ff;}
-    .upload-icon{font-size:48px;color:var(--primary);margin-bottom:12px;}
-    .file-input{display:none;}
-    .btn{
-      display:inline-block;padding:12px 28px;border:none;border-radius:8px;font-weight:600;
-      cursor:pointer;transition:.2s;margin-top:16px;
+    [data-theme="dark"] .container { background: #1e1e1e; }
+
+    /* Header */
+    header {
+      background: linear-gradient(135deg, var(--primary), #0056b3);
+      color: #fff; padding: 32px 24px; text-align: center; position: relative; overflow: hidden;
     }
-    .btn-primary{background:var(--primary);color:#fff;}
-    .btn-primary:hover:not(:disabled){background:#0056b3;transform:translateY(-1px);}
-    .btn-primary:disabled{background:#ccc;cursor:not-allowed;}
-    .btn-success{background:var(--success);color:#fff;}
-    .btn-success:hover:not(:disabled){background:#218838;}
-    .progress-container{
-      margin-top:20px;padding:16px;background:var(--light);border:1px solid var(--border);
-      border-radius:8px;display:none;
+    header::after {
+      content: ""; position: absolute; bottom: 0; left: 0; width: 100%; height: 6px;
+      background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb, #1dd1a1);
     }
-    .progress-header{display:flex;justify-content:space-between;align-items:center;font-weight:500;}
-    .spinner{
-      display:inline-block;width:16px;height:16px;border:2px solid #f3f3f3;
-      border-top:2px solid var(--primary);border-radius:50%;animation:spin 1s linear infinite;margin-right:8px;
+    h1 {
+      margin: 0; font-size: 2.4rem; font-weight: 800; letter-spacing: -0.5px;
+      text-shadow: 0 2px 4px rgba(0,0,0,.2);
     }
-    @keyframes spin{to{transform:rotate(360deg);}}
-    .error-list{margin-top:12px;font-size:.9rem;}
-    .error-item{
-      display:flex;align-items:center;padding:4px 0;border-bottom:1px solid #eee;
+    .subtitle {
+      font-size: 1.1rem; opacity: .95; margin-top: 8px; font-weight: 500;
+      animation: fadeIn 1s ease-out 0.5s forwards; opacity: 0;
     }
-    .error-item::before{content:"[Error]";color:var(--danger);margin-right:8px;}
-    footer{text-align:center;padding:20px;color:#888;font-size:.875rem;}
-    @media(max-width:600px){.content{padding:20px;} h1{font-size:1.6rem;}}
+
+    /* Theme Toggle */
+    .theme-toggle {
+      position: absolute; top: 16px; right: 16px; background: rgba(255,255,255,.2);
+      border: none; color: #fff; width: 40px; height: 40px; border-radius: 50%;
+      font-size: 1.1rem; cursor: pointer; transition: var(--transition);
+    }
+    .theme-toggle:hover { background: rgba(255,255,255,.3); transform: scale(1.1); }
+
+    /* Content */
+    .content { padding: 36px; }
+    .instructions {
+      background: #e8f4fd; border-left: 5px solid var(--primary); padding: 18px;
+      border-radius: 10px; margin-bottom: 28px; font-size: .95rem;
+    }
+    [data-theme="dark"] .instructions { background: #2a3a4a; border-color: #4a9eff; }
+    .instructions h3 { margin: 0 0 12px; color: var(--primary); font-weight: 600; }
+    .instructions ol { padding-left: 22px; }
+    .instructions li { margin: 8px 0; line-height: 1.5; }
+
+    /* Upload Box */
+    .upload-box {
+      border: 3px dashed #ccc; border-radius: var(--radius); padding: 50px 30px;
+      text-align: center; transition: var(--transition); background: #fafafa;
+      cursor: pointer; position: relative;
+    }
+    [data-theme="dark"] .upload-box { background: #2a2a2a; border-color: #444; }
+    .upload-box:hover, .upload-box.dragover {
+      border-color: var(--primary); background: #f0f8ff; transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(0,123,255,.15);
+    }
+    [data-theme="dark"] .upload-box:hover { background: #1a2a3a; }
+    .upload-icon { font-size: 56px; color: var(--primary); margin-bottom: 16px; }
+    .upload-box p { margin: 8px 0; font-weight: 500; }
+    .file-types { display: flex; justify-content: center; gap: 12px; margin-top: 12px; }
+    .badge {
+      background: var(--light); color: var(--dark); padding: 6px 12px; border-radius: 20px;
+      font-size: .85rem; font-weight: 600; display: flex; align-items: center; gap: 6px;
+    }
+    [data-theme="dark"] .badge { background: #333; color: #ddd; }
+
+    .file-input { display: none; }
+    .btn {
+      display: inline-block; padding: 14px 32px; border: none; border-radius: 10px;
+      font-weight: 600; cursor: pointer; transition: var(--transition); margin-top: 20px;
+      font-size: 1rem; box-shadow: 0 4px 15px rgba(0,0,0,.1);
+    }
+    .btn-primary {
+      background: var(--primary); color: #fff;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: #0056b3; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,123,255,.3);
+    }
+    .btn-success {
+      background: var(--success); color: #fff;
+    }
+    .btn-success:hover:not(:disabled) {
+      background: #218838; transform: translateY(-2px);
+    }
+    .btn:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+
+    /* Progress */
+    .progress-container {
+      margin-top: 24px; padding: 20px; background: var(--light); border: 1px solid var(--border);
+      border-radius: 12px; display: none; transition: var(--transition);
+    }
+    [data-theme="dark"] .progress-container { background: #2a2a2a; border-color: #444; }
+    .progress-header {
+      display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 1.1rem;
+    }
+    .counter {
+      display: flex; align-items: center; gap: 12px; color: var(--primary); font-weight: 700;
+    }
+    .counter i { font-size: 1.3rem; }
+    .progress-bar {
+      height: 8px; background: #e9ecef; border-radius: 4px; margin: 14px 0; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; width: 0; background: linear-gradient(90deg, var(--primary), #4a9eff);
+      border-radius: 4px; transition: width .4s ease;
+    }
+    .spinner {
+      display: inline-block; width: 18px; height: 18px; border: 2px solid #f3f3f3;
+      border-top: 2px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite;
+      margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+    .error-list { margin-top: 12px; font-size: .9rem; }
+    .error-item {
+      display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; color: var(--danger);
+    }
+    .error-item::before { content: "Warning"; margin-right: 8px; font-weight: bold; }
+
+    /* Success Check */
+    .success-check {
+      display: none; font-size: 2.5rem; color: var(--success); margin: 20px auto;
+      animation: bounce 0.6s ease-out;
+    }
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-20px); }
+    }
+
+    footer {
+      text-align: center; padding: 24px; color: #888; font-size: .9rem; background: #f8f9fa;
+    }
+    [data-theme="dark"] footer { background: #1a1a1a; color: #aaa; }
+
+    @media (max-width: 600px) {
+      .content { padding: 24px; }
+      h1 { font-size: 2rem; }
+      .upload-box { padding: 40px 20px; }
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
+      <button class="theme-toggle" id="themeToggle" title="Toggle Dark Mode">
+        <i class="fas fa-moon"></i>
+      </button>
       <h1>SFDX Data Dictionary</h1>
-      <p class="subtitle">SFDX Metadata to Excel (One Sheet Per Object)</p>
+      <p class="subtitle">Generate Excel from Salesforce Metadata • 100% Client-Side</p>
     </header>
+
     <div class="content">
       <div class="instructions">
-        <h3>How to Use (SFDX)</h3>
+        <h3>How to Use</h3>
         <ol>
-          <li>Use <strong>SFDX</strong> or VS Code to retrieve objects</li>
+          <li>Retrieve objects using <strong>SFDX</strong> or VS Code</li>
           <li>Zip the <code>force-app/main/default/objects/</code> folder</li>
-          <li>Drag & drop ZIP or individual <code>*.field-meta.xml</code> files</li>
+          <li>Drag & drop ZIP or <code>*.field-meta.xml</code> files</li>
           <li>Click <strong>Generate Excel</strong></li>
         </ol>
       </div>
-      <div class="upload-box" id="uploadBox" aria-label="Upload Zone">
-        <div class="upload-icon">Folder</div>
-        <p><strong>Drag & drop</strong> ZIP or field files here</p>
-        <p style="color:#666;font-size:.9rem;">Supports SFDX structure</p>
+
+      <div class="upload-box" id="uploadBox">
+        <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+        <p><strong>Drag & drop</strong> files here</p>
+        <p style="color:#666;font-size:.9rem;margin:8px 0;">Supports SFDX structure</p>
+        <div class="file-types">
+          <span class="badge"><i class="fas fa-file-archive"></i> .zip</span>
+          <span class="badge"><i class="fas fa-code"></i> .xml</span>
+        </div>
         <input type="file" id="fileInput" class="file-input" accept=".zip,.xml" multiple>
-        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Choose Files</button>
+        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+          Choose Files
+        </button>
       </div>
+
       <div id="progressContainer" class="progress-container">
         <div class="progress-header">
           <span id="statusText">Ready</span>
-          <span id="counter">0 objects</span>
+          <div class="counter">
+            <span><i class="fas fa-cube"></i> <span id="objCount">0</span> objects</span>
+            <span><i class="fas fa-list-alt"></i> <span id="fieldCount">0</span> fields</span>
+          </div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
         </div>
         <div id="errorList" class="error-list"></div>
       </div>
-      <div style="text-align:center;margin-top:24px;">
-        <button id="generateBtn" class="btn btn-success" disabled onclick="generateExcel()">Generate Excel File</button>
+
+      <div style="text-align:center;margin-top:28px;">
+        <i class="fas fa-check success-check" id="successCheck"></i>
+        <button id="generateBtn" class="btn btn-success" disabled onclick="generateExcel()">
+          Generate Excel File
+        </button>
       </div>
     </div>
-    <footer>100% Client-Side • SFDX Ready • JSZip + SheetJS</footer>
+
+    <footer>Client-Side • No Data Leaves Your Browser • Built with JSZip + SheetJS</footer>
   </div>
 
   <script>
     /* --------------------------------------------------------------
-       SFDX Data Dictionary – CLEAN VERSION (No Object List)
-       • ZIP + individual XML support
-       • Shows only: X objects (Y fields)
-       • No duplicates, no list clutter
+       SFDX Data Dictionary – ENHANCED UI + FULLY FUNCTIONAL
        -------------------------------------------------------------- */
     let objectData = {}, processed = 0, total = 0, errors = 0, totalFields = 0;
 
-    const uploadBox   = document.getElementById('uploadBox');
-    const fileInput   = document.getElementById('fileInput');
-    const progCont    = document.getElementById('progressContainer');
-    const statusText  = document.getElementById('statusText');
-    const counter     = document.getElementById('counter');
-    const errorList   = document.getElementById('errorList');
-    const generateBtn = document.getElementById('generateBtn');
+    const uploadBox     = document.getElementById('uploadBox');
+    const fileInput     = document.getElementById('fileInput');
+    const progCont      = document.getElementById('progressContainer');
+    const statusText    = document.getElementById('statusText');
+    const objCount      = document.getElementById('objCount');
+    const fieldCount    = document.getElementById('fieldCount');
+    const progressFill  = document.getElementById('progressFill');
+    const errorList     = document.getElementById('errorList');
+    const generateBtn   = document.getElementById('generateBtn');
+    const successCheck  = document.getElementById('successCheck');
+    const themeToggle   = document.getElementById('themeToggle');
+
+    // Theme Toggle
+    themeToggle.addEventListener('click', () => {
+      const isDark = document.body.getAttribute('data-theme') === 'dark';
+      document.body.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      themeToggle.innerHTML = isDark ? '<i class="fas fa-moon"></i>' : '<i class="fas fa-sun"></i>';
+    });
 
     /* ---- Drag & Drop ------------------------------------------------ */
     ['dragenter','dragover'].forEach(ev => uploadBox.addEventListener(ev, e => {e.preventDefault(); uploadBox.classList.add('dragover');}));
@@ -128,7 +260,8 @@
     function reset() {
       objectData = {}; processed = total = errors = totalFields = 0;
       errorList.innerHTML = ''; generateBtn.disabled = true;
-      progCont.style.display = 'none';
+      progCont.style.display = 'none'; successCheck.style.display = 'none';
+      progressFill.style.width = '0%';
     }
 
     /* ---- Main ------------------------------------------------------- */
@@ -138,8 +271,8 @@
       total = files.length;
       if (!total) return;
       progCont.style.display = 'block';
-      statusText.innerHTML = '<div class="spinner"></div> Processing...';
-      counter.textContent = '0 objects';
+      statusText.innerHTML = '<div class="spinner"></div> Processing files...';
+      objCount.textContent = '0'; fieldCount.textContent = '0';
 
       const zips = files.filter(f => f.name.endsWith('.zip'));
       const xmls = files.filter(f => f.name.endsWith('.xml'));
@@ -153,7 +286,6 @@
       try {
         const zip = await JSZip.loadAsync(zipFile);
         const entries = [];
-
         zip.forEach((relPath, zipEntry) => {
           if (zipEntry.dir) return;
           const low = relPath.toLowerCase();
@@ -161,17 +293,13 @@
             entries.push({relPath, zipEntry});
           }
         });
-
         if (!entries.length) throw new Error('No metadata files found in ZIP');
-
         for (const {relPath, zipEntry} of entries) {
           try {
             const text = await zipEntry.async('text');
             if (relPath.endsWith('.object-meta.xml')) parseObjectFile(relPath, text);
             else parseFieldFile(relPath, text);
-          } catch (e) {
-            addError(`Error in ${relPath.split('/').pop()}: ${e.message}`);
-          }
+          } catch (e) { addError(`Error in ${relPath.split('/').pop()}: ${e.message}`); }
           updateProgress();
         }
       } catch (e) {
@@ -190,9 +318,7 @@
             const fakePath = `objects/${f.name}`;
             if (f.name.endsWith('.object-meta.xml')) parseObjectFile(fakePath, e.target.result);
             else parseFieldFile(fakePath, e.target.result);
-          } catch (err) {
-            addError(`Parse error in ${f.name}: ${err.message}`);
-          }
+          } catch (err) { addError(`Parse error in ${f.name}: ${err.message}`); }
           updateProgress();
         };
         reader.onerror = () => { addError(`Read error: ${f.name}`); updateProgress(); };
@@ -204,49 +330,31 @@
     function parseObjectFile(path, xmlText) {
       const objectName = extractObjectNameFromPath(path);
       if (!objectName) return;
-
       const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
       if (doc.querySelector('parsererror')) throw new Error('Invalid XML');
-
       const label = doc.querySelector('label')?.textContent.trim() || '';
       const description = doc.querySelector('description')?.textContent.trim() || '';
-
-      if (!objectData[objectName]) {
-        objectData[objectName] = { label, description, fields: [] };
-      } else {
-        Object.assign(objectData[objectName], { label, description });
-      }
+      if (!objectData[objectName]) objectData[objectName] = { label, description, fields: [] };
+      else Object.assign(objectData[objectName], { label, description });
     }
 
     /* ---- Parse Field ------------------------------------------------ */
     function parseFieldFile(path, xmlText) {
       const objectName = extractObjectNameFromPath(path);
       if (!objectName) return;
-
       const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
       if (doc.querySelector('parsererror')) throw new Error('Invalid XML');
-
       const q = s => doc.querySelector(s)?.textContent.trim() || '';
       const field = {
-        'Field Name':     q('fullName'),
-        'Type':           q('type'),
-        'Label':          q('label'),
-        'Description':    q('description'),
-        'Length':         q('length'),
-        'Precision':      q('precision'),
-        'Scale':          q('scale'),
-        'Required':       q('required') === 'true' ? 'Yes' : 'No',
-        'Unique':         q('unique') === 'true' ? 'Yes' : 'No',
-        'Default Value':  q('defaultValue'),
-        'Reference To':   q('referenceTo')
+        'Field Name': q('fullName'), 'Type': q('type'), 'Label': q('label'),
+        'Description': q('description'), 'Length': q('length'), 'Precision': q('precision'),
+        'Scale': q('scale'), 'Required': q('required') === 'true' ? 'Yes' : 'No',
+        'Unique': q('unique') === 'true' ? 'Yes' : 'No', 'Default Value': q('defaultValue'),
+        'Reference To': q('referenceTo')
       };
-
       if (!field['Field Name']) return;
       totalFields++;
-
-      if (!objectData[objectName]) {
-        objectData[objectName] = { label: '', description: '', fields: [] };
-      }
+      if (!objectData[objectName]) objectData[objectName] = { label: '', description: '', fields: [] };
       objectData[objectName].fields.push(field);
     }
 
@@ -254,10 +362,7 @@
     function extractObjectNameFromPath(path) {
       const parts = path.replace('\\', '/').split('/');
       const objectsIdx = parts.findIndex(p => p === 'objects');
-      if (objectsIdx !== -1 && objectsIdx + 1 < parts.length) {
-        return parts[objectsIdx + 1];
-      }
-
+      if (objectsIdx !== -1 && objectsIdx + 1 < parts.length) return parts[objectsIdx + 1];
       const file = parts[parts.length - 1];
       if (file.endsWith('.field-meta.xml')) {
         const m = file.match(/^(.+?)(?:__c)?\.field-meta\.xml$/i);
@@ -279,17 +384,20 @@
       errorList.appendChild(div);
     }
 
-    /* ---- Update Counter Only (No List) ------------------------------ */
+    /* ---- Update Progress -------------------------------------------- */
     function updateProgress() {
       processed++;
       const okObjects = Object.keys(objectData).filter(o => objectData[o].fields.length > 0).length;
-      counter.textContent = `${okObjects} object${okObjects === 1 ? '' : 's'} (${totalFields} field${totalFields === 1 ? '' : 's'})`;
+      objCount.textContent = okObjects;
+      fieldCount.textContent = totalFields;
+      progressFill.style.width = `${(processed / total) * 100}%`;
 
       if (processed >= total) {
         setTimeout(() => {
-          statusText.textContent = 'Ready';
+          statusText.innerHTML = '<i class="fas fa-check-circle" style="color:var(--success);margin-right:8px;"></i> Ready';
           generateBtn.disabled = totalFields === 0;
-        }, 200);
+          successCheck.style.display = 'block';
+        }, 300);
       }
     }
 
@@ -297,18 +405,15 @@
     function generateExcel() {
       const valid = Object.entries(objectData).filter(([,d]) => d.fields.length > 0);
       if (!valid.length) { alert('No fields to export.'); return; }
-
       generateBtn.disabled = true;
-      generateBtn.innerHTML = '<div class="spinner"></div> Building...';
+      generateBtn.innerHTML = '<div class="spinner"></div> Building Excel...';
 
       setTimeout(() => {
         try {
           const wb = XLSX.utils.book_new();
           valid.forEach(([obj, data]) => {
             const rows = data.fields.map(f => ({
-              ...f,
-              'Object Label': data.label,
-              'Object Description': data.description
+              ...f, 'Object Label': data.label, 'Object Description': data.description
             }));
             const ws = XLSX.utils.json_to_sheet(rows);
             const colW = [];
@@ -321,7 +426,7 @@
           });
           const fname = `SFDX_Data_Dictionary_${new Date().toISOString().slice(0,10)}.xlsx`;
           XLSX.writeFile(wb, fname);
-          statusText.textContent = `Downloaded ${fname}`;
+          statusText.innerHTML = `<i class="fas fa-download" style="margin-right:8px;"></i> ${fname}`;
         } catch (e) {
           alert('Export failed: ' + e.message);
         } finally {
